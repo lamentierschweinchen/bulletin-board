@@ -15,18 +15,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from decode import (
     run_query,
     decode_post_from_base64,
+    decode_u64_from_base64,
     format_timestamp,
     short_address,
 )
 
 
-def display_post(post):
+def get_upvote_count(post_id):
+    """Fetch the upvote count for a post."""
+    data = run_query("getUpvotes", [str(post_id)])
+    if data and data[0] != "":
+        return decode_u64_from_base64(data[0])
+    return 0
+
+
+def display_post(post, upvotes=0):
     """Display a single post."""
     print(f"=== Post #{post['id']} ===")
     print(f"Author:    {post['author']}")
     if post["title"]:
         print(f"Title:     {post['title']}")
     print(f"Time:      {format_timestamp(post['timestamp'])}")
+    print(f"Upvotes:   {upvotes}")
     if post["parent_id"] > 0:
         print(f"Reply to:  #{post['parent_id']}")
     print(f"---")
@@ -55,7 +65,8 @@ def main():
         sys.exit(1)
 
     post = decode_post_from_base64(return_data[0])
-    display_post(post)
+    upvotes = get_upvote_count(args.post_id)
+    display_post(post, upvotes)
 
     # Fetch replies
     reply_data = run_query("getReplies", [str(args.post_id)])

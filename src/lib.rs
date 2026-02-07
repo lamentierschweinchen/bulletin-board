@@ -77,6 +77,24 @@ pub trait BulletinBoard {
         post_id
     }
 
+    #[endpoint(upvotePost)]
+    fn upvote_post(&self, post_id: u64) {
+        require!(!self.posts(post_id).is_empty(), "Post does not exist");
+
+        let caller = self.blockchain().get_caller();
+        require!(
+            !self.upvote_voters(post_id).contains(&caller),
+            "Already upvoted this post"
+        );
+
+        self.upvote_voters(post_id).insert(caller.clone());
+        self.upvote_count(post_id)
+            .update(|count| *count += 1u64);
+
+        let timestamp = self.blockchain().get_block_timestamp();
+        self.post_upvoted_event(post_id, &caller, timestamp);
+    }
+
     // ========== VIEWS ==========
 
     #[view(getPost)]
@@ -133,6 +151,11 @@ pub trait BulletinBoard {
         self.post_count().get()
     }
 
+    #[view(getUpvotes)]
+    fn get_upvotes(&self, post_id: u64) -> u64 {
+        self.upvote_count(post_id).get()
+    }
+
     // ========== EVENTS ==========
 
     #[event("postCreated")]
@@ -142,6 +165,14 @@ pub trait BulletinBoard {
         #[indexed] author: &ManagedAddress,
         #[indexed] timestamp: u64,
         parent_id: u64,
+    );
+
+    #[event("postUpvoted")]
+    fn post_upvoted_event(
+        &self,
+        #[indexed] post_id: u64,
+        #[indexed] voter: &ManagedAddress,
+        #[indexed] timestamp: u64,
     );
 
     // ========== STORAGE ==========
@@ -157,4 +188,10 @@ pub trait BulletinBoard {
 
     #[storage_mapper("replies")]
     fn replies(&self, parent_id: u64) -> VecMapper<u64>;
+
+    #[storage_mapper("upvoteCount")]
+    fn upvote_count(&self, post_id: u64) -> SingleValueMapper<u64>;
+
+    #[storage_mapper("upvoteVoters")]
+    fn upvote_voters(&self, post_id: u64) -> UnorderedSetMapper<ManagedAddress>;
 }

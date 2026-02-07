@@ -18,5 +18,7 @@ multiversx_sc_wasm_adapter::endpoints! {
         getLatestPosts => get_latest_posts
         getReplies => get_replies
         getPostCount => get_post_count
+        upvotePost => upvote_post
+        getUpvotes => get_upvotes
     )
 }

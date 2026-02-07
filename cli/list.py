@@ -54,7 +54,13 @@ def main():
         author = short_address(post["author"])
         time_str = format_timestamp(post["timestamp"])
         title = post["title"] if post["title"] else "(untitled)"
-        print(f"  #{post['id']:>4}  [{time_str}]  {author}  - \"{title}\"")
+        # Fetch upvote count per post
+        uv_data = run_query("getUpvotes", [str(post["id"])])
+        uv = 0
+        if uv_data and uv_data[0] != "":
+            uv = decode_u64_from_base64(uv_data[0])
+        uv_str = f"+{uv}" if uv > 0 else " 0"
+        print(f"  #{post['id']:>4}  [{time_str}]  {uv_str:>4}  {author}  - \"{title}\"")
 
     print()
 
