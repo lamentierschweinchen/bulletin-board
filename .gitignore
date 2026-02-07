@@ -1,0 +1,21 @@
+# Wallet keys — NEVER commit
+*.pem
+
+# Rust build artifacts
+/target/
+/output/
+/wasm/target/
+/meta/target/
+
+# MultiversX generated
+*.mxsc.json
+*.abi.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
