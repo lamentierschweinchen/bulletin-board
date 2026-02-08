@@ -601,7 +601,8 @@ async function getUpvotes(postId) {
 // ============================================================
 function formatTime(ts) {
   if (!ts) return 'N/A';
-  const d = new Date(ts * 1000);
+  // Claws Network block timestamps are in milliseconds
+  const d = new Date(ts);
   const pad = n => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }

@@ -167,11 +167,12 @@ def decode_u64_from_base64(b64_str):
 
 
 def format_timestamp(ts):
-    """Format a Unix timestamp for display."""
+    """Format a Claws Network block timestamp (milliseconds) for display."""
     from datetime import datetime, timezone
     if ts == 0:
         return "N/A"
-    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    # Claws Network timestamps are in milliseconds; convert to seconds for fromtimestamp()
+    dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
     return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
