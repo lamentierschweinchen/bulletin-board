@@ -221,19 +221,44 @@
     opacity: 0.7;
   }
 
-  /* Load more */
-  .load-more-wrap {
-    text-align: center;
-    padding: 12px 0 4px;
+  /* Search bar */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 11px;
   }
-  .load-more-wrap .btn {
-    min-width: 160px;
+  .search-bar .search-label {
+    color: var(--text-dim);
+    white-space: nowrap;
   }
-  .load-more-wrap .load-hint {
-    display: block;
-    margin-top: 6px;
+  .search-bar input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 2px;
+    outline: none;
+  }
+  .search-bar input:focus {
+    border-color: var(--red-dim);
+  }
+  .search-bar input::placeholder {
+    color: var(--text-dim);
+    opacity: 0.6;
+  }
+  .search-bar .btn {
+    padding: 4px 10px;
+  }
+  .search-bar .search-status {
     color: var(--text-dim);
     font-size: 10px;
+    white-space: nowrap;
   }
 
   /* Loading progress bar */
@@ -660,9 +685,15 @@
       padding: 10px 16px;
     }
 
-    .load-more-wrap .btn {
-      width: 100%;
-      padding: 12px 16px;
+    .search-bar {
+      gap: 6px;
+    }
+    .search-bar input {
+      font-size: 12px;
+      padding: 8px;
+    }
+    .search-bar .btn {
+      padding: 8px 12px;
       font-size: 12px;
     }
 
@@ -722,6 +753,15 @@
     </span>
   </div>
 
+  <!-- SEARCH BAR -->
+  <div class="search-bar" id="searchBar" style="display:none;">
+    <span class="search-label">search:</span>
+    <input type="text" id="searchInput" placeholder="keyword..." spellcheck="false" onkeydown="if(event.key==='Enter')doSearch()">
+    <button class="btn" onclick="doSearch()">go</button>
+    <button class="btn" id="searchClearBtn" onclick="clearSearch()" style="display:none;">clear</button>
+    <span class="search-status" id="searchStatus"></span>
+  </div>
+
   <!-- SORT BAR -->
   <div class="sort-bar" id="sortBar" style="display:none;">
     <span class="sort-label">sort:</span>
@@ -748,10 +788,6 @@
       <button class="btn" id="prevPageBtn" onclick="prevPage()" disabled>&lt; prev</button>
       <span class="page-info" id="pageInfo"></span>
       <button class="btn" id="nextPageBtn" onclick="nextPage()">next &gt;</button>
-    </div>
-    <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
-      <button class="btn" id="loadMoreBtn" onclick="loadOlderPosts()">load older posts</button>
-      <span class="load-hint" id="loadMoreHint"></span>
     </div>
   </div>
 
@@ -829,6 +865,7 @@ let totalPostCount = 0;
 let replyCountCache = {};      // postId -> reply count
 let isLoadingMore = false;
 let oldestLoadedId = Infinity; // track lowest post ID loaded so far
+let searchQuery = '';          // current active search term
 
 // ============================================================
 // BECH32 ENCODING (minimal inline implementation)
@@ -1127,10 +1164,10 @@ function setStatus(msg, isError = false) {
 async function loadPosts() {
   const toolbar = document.getElementById('toolbar');
   const sortBar = document.getElementById('sortBar');
+  const searchBar = document.getElementById('searchBar');
   const header = document.getElementById('postListHeader');
   const listEl = document.getElementById('postList');
   const pagination = document.getElementById('pagination');
-  const loadMoreWrap = document.getElementById('loadMoreWrap');
 
   if (!CONTRACT_ADDRESS) {
     setStatus('enter a contract address to begin');
@@ -1140,9 +1177,9 @@ async function loadPosts() {
   setStatus('querying contract...');
   toolbar.style.display = 'none';
   sortBar.style.display = 'none';
+  searchBar.style.display = 'none';
   header.style.display = 'none';
   pagination.style.display = 'none';
-  loadMoreWrap.style.display = 'none';
 
   const scrollY = window.scrollY;
 
@@ -1196,6 +1233,7 @@ async function loadPosts() {
 
     setStatus('');
     toolbar.style.display = 'flex';
+    searchBar.style.display = 'flex';
     sortBar.style.display = 'flex';
 
     // Reset to first page on fresh load
@@ -1274,33 +1312,6 @@ async function fetchOlderBatch(targetCount, onProgress) {
   return newPosts;
 }
 
-async function loadOlderPosts() {
-  if (isLoadingMore || oldestLoadedId <= 1) return;
-  isLoadingMore = true;
-
-  const btn = document.getElementById('loadMoreBtn');
-  const origText = btn.textContent;
-  btn.textContent = 'loading...';
-  btn.disabled = true;
-
-  try {
-    showLoadingBar('loading older posts...', 0);
-    await fetchOlderBatch(50, (scanned, total) => {
-      const pct = total > 0 ? (scanned / total) * 100 : 0;
-      showLoadingBar(`loading posts... (#${oldestLoadedId} \u2192 #1)`, pct);
-    });
-    hideLoadingBar();
-    renderPostList();
-  } catch (err) {
-    console.error('Failed to load older posts:', err);
-    hideLoadingBar();
-  } finally {
-    isLoadingMore = false;
-    btn.textContent = origText;
-    btn.disabled = false;
-  }
-}
-
 // Load ALL posts from current position down to #1
 async function loadAllPosts() {
   if (isLoadingMore || oldestLoadedId <= 1) return;
@@ -1308,9 +1319,7 @@ async function loadAllPosts() {
 
   const listEl = document.getElementById('postList');
   const pagination = document.getElementById('pagination');
-  const loadMoreWrap = document.getElementById('loadMoreWrap');
   pagination.style.display = 'none';
-  loadMoreWrap.style.display = 'none';
   listEl.innerHTML = '';
 
   try {
@@ -1339,43 +1348,59 @@ async function loadAllPosts() {
   }
 }
 
+function getFilteredPosts() {
+  let posts = [...allPosts];
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    posts = posts.filter(p =>
+      (p.title && p.title.toLowerCase().includes(q)) ||
+      (p.body && p.body.toLowerCase().includes(q))
+    );
+  }
+  return posts;
+}
+
 function getSortedPosts() {
-  const sorted = [...allPosts];
+  const filtered = getFilteredPosts();
   // dir=1 means descending (highest first), dir=-1 means ascending (lowest first)
   const dir = sortDesc ? 1 : -1;
   switch (currentSort) {
     case 'upvoted':
-      sorted.sort((a, b) => dir * ((b.upvotes || 0) - (a.upvotes || 0)));
+      filtered.sort((a, b) => dir * ((b.upvotes || 0) - (a.upvotes || 0)));
       break;
     case 'commented':
-      sorted.sort((a, b) => dir * ((b.replyCount || 0) - (a.replyCount || 0)));
+      filtered.sort((a, b) => dir * ((b.replyCount || 0) - (a.replyCount || 0)));
       break;
     case 'recent':
     default:
-      sorted.sort((a, b) => dir * (b.id - a.id));
+      filtered.sort((a, b) => dir * (b.id - a.id));
       break;
   }
-  return sorted;
+  return filtered;
 }
 
 function renderPostList() {
   const header = document.getElementById('postListHeader');
   const listEl = document.getElementById('postList');
   const pagination = document.getElementById('pagination');
-  const loadMoreWrap = document.getElementById('loadMoreWrap');
 
   const sorted = getSortedPosts();
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  if (currentPage >= totalPages && totalPages > 0) currentPage = totalPages - 1;
   const start = currentPage * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, sorted.length);
   const page = sorted.slice(start, end);
 
   header.style.display = 'grid';
-  const loadedLabel = allPosts.length < totalPostCount
-    ? `${allPosts.length} loaded`
-    : `all ${allPosts.length}`;
-  document.getElementById('listLabel').textContent =
-    `showing ${start + 1}\u2013${end} of ${loadedLabel} posts`;
+  let label;
+  if (searchQuery) {
+    label = `${sorted.length} results for \u201c${searchQuery}\u201d`;
+  } else if (allPosts.length < totalPostCount) {
+    label = `showing ${start + 1}\u2013${end} of ${allPosts.length} loaded posts`;
+  } else {
+    label = `showing ${start + 1}\u2013${end} of all ${allPosts.length} posts`;
+  }
+  document.getElementById('listLabel').textContent = label;
 
   listEl.innerHTML = '';
   page.forEach((post) => {
@@ -1402,22 +1427,22 @@ function renderPostList() {
   });
 
   // Pagination controls
-  if (totalPages > 1) {
+  // Total pages considers all posts (loaded + unloaded top-level)
+  // We estimate total top-level pages based on ratio of top-level posts in loaded data
+  const estimatedTotalPages = oldestLoadedId <= 1
+    ? totalPages
+    : Math.ceil(totalPostCount * (allPosts.length / Math.max(totalPostCount - oldestLoadedId + 1, 1)) / PAGE_SIZE);
+  const displayTotalPages = searchQuery ? totalPages : Math.max(totalPages, estimatedTotalPages);
+
+  if (displayTotalPages > 1 || totalPages > 1) {
     pagination.style.display = 'flex';
     document.getElementById('prevPageBtn').disabled = currentPage === 0;
-    document.getElementById('nextPageBtn').disabled = currentPage >= totalPages - 1;
-    document.getElementById('pageInfo').textContent = `page ${currentPage + 1} of ${totalPages}`;
+    // Allow next if we have more loaded pages OR more posts to fetch
+    const canGoNext = currentPage < totalPages - 1 || (!searchQuery && oldestLoadedId > 1);
+    document.getElementById('nextPageBtn').disabled = !canGoNext;
+    document.getElementById('pageInfo').textContent = `page ${currentPage + 1} of ${totalPages}${!searchQuery && oldestLoadedId > 1 ? '+' : ''}`;
   } else {
     pagination.style.display = 'none';
-  }
-
-  // Load more button — show if there are older posts to fetch
-  if (oldestLoadedId > 1) {
-    loadMoreWrap.style.display = 'block';
-    document.getElementById('loadMoreHint').textContent =
-      `loaded down to post #${oldestLoadedId} of ${totalPostCount}`;
-  } else {
-    loadMoreWrap.style.display = 'none';
   }
 }
 
@@ -1464,13 +1489,34 @@ async function changeSort(sort) {
   window.scrollTo(0, 0);
 }
 
-function nextPage() {
+async function nextPage() {
   const sorted = getSortedPosts();
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   if (currentPage < totalPages - 1) {
+    // We have more loaded pages — just go forward
     currentPage++;
     renderPostList();
     window.scrollTo(0, 0);
+  } else if (oldestLoadedId > 1 && !searchQuery) {
+    // At the end of loaded data but more posts exist — fetch more
+    if (isLoadingMore) return;
+    isLoadingMore = true;
+    showLoadingBar('loading more posts...', 0);
+    try {
+      await fetchOlderBatch(100, (scanned, total) => {
+        const pct = total > 0 ? (scanned / total) * 100 : 0;
+        showLoadingBar(`loading posts... (${allPosts.length} loaded, down to #${oldestLoadedId})`, pct);
+      });
+      hideLoadingBar();
+      currentPage++;
+      renderPostList();
+      window.scrollTo(0, 0);
+    } catch (err) {
+      console.error('Failed to load more posts:', err);
+      hideLoadingBar();
+    } finally {
+      isLoadingMore = false;
+    }
   }
 }
 
@@ -1489,8 +1535,8 @@ async function showThread(postId) {
   stopPolling();
   document.getElementById('postListView').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('searchBar').style.display = 'none';
   document.getElementById('sortBar').style.display = 'none';
-  document.getElementById('loadMoreWrap').style.display = 'none';
   hideLoadingBar();
   document.getElementById('threadView').style.display = 'block';
   setStatus('loading thread...');
@@ -1546,10 +1592,42 @@ async function showThread(postId) {
   }
 }
 
+// ============================================================
+// SEARCH
+// ============================================================
+async function doSearch() {
+  const input = document.getElementById('searchInput');
+  const q = input.value.trim();
+  if (!q) { clearSearch(); return; }
+
+  // If not all posts loaded, load them first for full search
+  if (oldestLoadedId > 1) {
+    document.getElementById('searchStatus').textContent = 'loading all posts for search...';
+    await loadAllPosts();
+  }
+
+  searchQuery = q;
+  currentPage = 0;
+  document.getElementById('searchClearBtn').style.display = '';
+  const results = getFilteredPosts();
+  document.getElementById('searchStatus').textContent = `${results.length} found`;
+  renderPostList();
+}
+
+function clearSearch() {
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClearBtn').style.display = 'none';
+  document.getElementById('searchStatus').textContent = '';
+  currentPage = 0;
+  renderPostList();
+}
+
 function showListView() {
   document.getElementById('threadView').style.display = 'none';
   document.getElementById('postListView').style.display = 'block';
   document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('searchBar').style.display = 'flex';
   document.getElementById('sortBar').style.display = 'flex';
   setStatus('');
   startPolling();
@@ -1625,6 +1703,10 @@ function saveConfigAndLoad() {
   oldestLoadedId = Infinity;
   allPosts = [];
   replyCountCache = {};
+  searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClearBtn').style.display = 'none';
+  document.getElementById('searchStatus').textContent = '';
   stopPolling();
   loadPosts().then(() => startPolling());
 }
