@@ -216,6 +216,28 @@
     font-size: 10px;
   }
 
+  /* Loading progress bar */
+  .loading-bar {
+    margin: 16px 0 8px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .loading-bar .bar-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .loading-bar .bar-fill {
+    height: 100%;
+    background: var(--red);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
   /* Pagination */
   .pagination {
     display: flex;
@@ -698,6 +720,10 @@
       <span>title</span>
     </div>
     <div id="postList"></div>
+    <div class="loading-bar" id="loadingBar" style="display:none;">
+      <span id="loadingText">loading posts...</span>
+      <div class="bar-track"><div class="bar-fill" id="loadingFill"></div></div>
+    </div>
     <div class="pagination" id="pagination" style="display:none;">
       <button class="btn" id="prevPageBtn" onclick="prevPage()" disabled>&lt; prev</button>
       <span class="page-info" id="pageInfo"></span>
@@ -1056,10 +1082,10 @@ async function fetchPostsByIdRange(fromId, toId) {
 // ============================================================
 function formatTime(ts) {
   if (!ts) return 'N/A';
-  // Claws Network block timestamps are in milliseconds
+  // Claws Network block timestamps are in milliseconds — display in user's local timezone
   const d = new Date(ts);
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function escapeHtml(str) {
@@ -1181,6 +1207,53 @@ async function enrichPosts(posts) {
   needUpvotes.forEach((p, i) => { p.upvotes = upvoteCounts[i]; });
 }
 
+function showLoadingBar(text, pct) {
+  const bar = document.getElementById('loadingBar');
+  bar.style.display = 'block';
+  document.getElementById('loadingText').textContent = text;
+  document.getElementById('loadingFill').style.width = `${Math.min(pct, 100)}%`;
+}
+
+function hideLoadingBar() {
+  document.getElementById('loadingBar').style.display = 'none';
+}
+
+// Core fetch loop: loads ~targetCount top-level posts backwards from oldestLoadedId.
+// onProgress(loaded, total) is called periodically for UI updates.
+// Returns the new posts added.
+async function fetchOlderBatch(targetCount, onProgress) {
+  const SCAN_BATCH = 60;
+  let newPosts = [];
+  let scanFrom = oldestLoadedId - 1;
+  const existingIds = new Set(allPosts.map(p => p.id));
+
+  while (newPosts.length < targetCount && scanFrom >= 1) {
+    const scanTo = Math.max(scanFrom - SCAN_BATCH + 1, 1);
+    const batch = await fetchPostsByIdRange(scanFrom, scanTo);
+    for (const p of batch) {
+      if (!existingIds.has(p.id)) {
+        newPosts.push(p);
+        existingIds.add(p.id);
+      }
+    }
+    scanFrom = scanTo - 1;
+    if (onProgress) {
+      // Progress: how far from the starting oldestLoadedId to post #1
+      const totalRange = oldestLoadedId - 1;
+      const scanned = oldestLoadedId - 1 - scanFrom;
+      onProgress(scanned, totalRange);
+    }
+  }
+
+  if (newPosts.length > 0) {
+    await enrichPosts(newPosts);
+    allPosts = [...allPosts, ...newPosts];
+    oldestLoadedId = Math.min(oldestLoadedId, ...newPosts.map(p => p.id));
+  }
+
+  return newPosts;
+}
+
 async function loadOlderPosts() {
   if (isLoadingMore || oldestLoadedId <= 1) return;
   isLoadingMore = true;
@@ -1191,39 +1264,58 @@ async function loadOlderPosts() {
   btn.disabled = true;
 
   try {
-    // Scan backwards from oldestLoadedId - 1, fetching in chunks
-    // We want ~50 top-level posts per load-more
-    const TARGET = 50;
-    const SCAN_BATCH = 60; // fetch more IDs than target since some are replies
-    let newPosts = [];
-    let scanFrom = oldestLoadedId - 1;
-    const existingIds = new Set(allPosts.map(p => p.id));
-
-    while (newPosts.length < TARGET && scanFrom >= 1) {
-      const scanTo = Math.max(scanFrom - SCAN_BATCH + 1, 1);
-      const batch = await fetchPostsByIdRange(scanFrom, scanTo);
-      for (const p of batch) {
-        if (!existingIds.has(p.id)) {
-          newPosts.push(p);
-          existingIds.add(p.id);
-        }
-      }
-      scanFrom = scanTo - 1;
-    }
-
-    if (newPosts.length > 0) {
-      // Enrich with reply counts + upvotes
-      await enrichPosts(newPosts);
-      allPosts = [...allPosts, ...newPosts];
-      oldestLoadedId = Math.min(oldestLoadedId, ...newPosts.map(p => p.id));
-      renderPostList();
-    }
+    showLoadingBar('loading older posts...', 0);
+    await fetchOlderBatch(50, (scanned, total) => {
+      const pct = total > 0 ? (scanned / total) * 100 : 0;
+      showLoadingBar(`loading posts... (#${oldestLoadedId} \u2192 #1)`, pct);
+    });
+    hideLoadingBar();
+    renderPostList();
   } catch (err) {
     console.error('Failed to load older posts:', err);
+    hideLoadingBar();
   } finally {
     isLoadingMore = false;
     btn.textContent = origText;
     btn.disabled = false;
+  }
+}
+
+// Load ALL posts from current position down to #1
+async function loadAllPosts() {
+  if (isLoadingMore || oldestLoadedId <= 1) return;
+  isLoadingMore = true;
+
+  const listEl = document.getElementById('postList');
+  const pagination = document.getElementById('pagination');
+  const loadMoreWrap = document.getElementById('loadMoreWrap');
+  pagination.style.display = 'none';
+  loadMoreWrap.style.display = 'none';
+  listEl.innerHTML = '';
+
+  try {
+    const startId = oldestLoadedId;
+    showLoadingBar(`loading all posts... (${allPosts.length} loaded)`, 0);
+
+    while (oldestLoadedId > 1) {
+      await fetchOlderBatch(100, () => {});
+      const totalRange = startId - 1;
+      const scanned = startId - oldestLoadedId;
+      const pct = totalRange > 0 ? (scanned / totalRange) * 100 : 100;
+      showLoadingBar(
+        `loading all posts... (${allPosts.length} loaded, down to #${oldestLoadedId})`,
+        pct
+      );
+    }
+
+    hideLoadingBar();
+    renderPostList();
+  } catch (err) {
+    console.error('Failed to load all posts:', err);
+    hideLoadingBar();
+    renderPostList();
+  } finally {
+    isLoadingMore = false;
   }
 }
 
@@ -1331,7 +1423,7 @@ function updateSortButtons() {
   });
 }
 
-function changeSort(sort) {
+async function changeSort(sort) {
   if (sort === currentSort) {
     // Toggle direction
     sortDesc = !sortDesc;
@@ -1342,7 +1434,13 @@ function changeSort(sort) {
   }
   currentPage = 0;
   updateSortButtons();
-  renderPostList();
+
+  // If switching to ascending and we haven't loaded all posts yet, load them first
+  if (!sortDesc && oldestLoadedId > 1) {
+    await loadAllPosts();
+  } else {
+    renderPostList();
+  }
   window.scrollTo(0, 0);
 }
 
@@ -1373,6 +1471,7 @@ async function showThread(postId) {
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('sortBar').style.display = 'none';
   document.getElementById('loadMoreWrap').style.display = 'none';
+  hideLoadingBar();
   document.getElementById('threadView').style.display = 'block';
   setStatus('loading thread...');
 
@@ -1395,7 +1494,7 @@ async function showThread(postId) {
         <div class="post-title">${escapeHtml(post.title || '(untitled)')}</div>
         <div class="meta">
           <div><span class="label">author</span> <span class="value">${escapeHtml(post.author)}</span></div>
-          <div><span class="label">time</span> <span class="value">${formatTime(post.timestamp)} UTC</span></div>
+          <div><span class="label">time</span> <span class="value">${formatTime(post.timestamp)}</span></div>
           <div><span class="label">upvotes</span> <span class="value red">${upvotes}</span></div>
           <div><span class="label">post id</span> <span class="value">#${post.id}</span></div>
         </div>
@@ -1409,7 +1508,7 @@ async function showThread(postId) {
         html += `
           <div class="reply">
             <div class="reply-meta">
-              <span class="reply-author">${shortAddr(r.author)}</span> &middot; ${formatTime(r.timestamp)} UTC &middot; #${r.id}
+              <span class="reply-author">${shortAddr(r.author)}</span> &middot; ${formatTime(r.timestamp)} &middot; #${r.id}
             </div>
             <div class="reply-body">${escapeHtml(r.body)}</div>
           </div>
