@@ -194,6 +194,27 @@
     border-color: var(--red-dim);
     background: var(--red-glow);
   }
+  .sort-btn .arrow {
+    display: inline-block;
+    margin-left: 3px;
+    font-size: 9px;
+    opacity: 0.7;
+  }
+
+  /* Load more */
+  .load-more-wrap {
+    text-align: center;
+    padding: 12px 0 4px;
+  }
+  .load-more-wrap .btn {
+    min-width: 160px;
+  }
+  .load-more-wrap .load-hint {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-dim);
+    font-size: 10px;
+  }
 
   /* Pagination */
   .pagination {
@@ -597,6 +618,12 @@
       padding: 10px 16px;
     }
 
+    .load-more-wrap .btn {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 12px;
+    }
+
     /* Thread view adjustments */
     .thread-post {
       padding: 12px 14px;
@@ -656,9 +683,9 @@
   <!-- SORT BAR -->
   <div class="sort-bar" id="sortBar" style="display:none;">
     <span class="sort-label">sort:</span>
-    <button class="sort-btn active" data-sort="recent" onclick="changeSort('recent')">recent</button>
-    <button class="sort-btn" data-sort="upvoted" onclick="changeSort('upvoted')">most upvoted</button>
-    <button class="sort-btn" data-sort="commented" onclick="changeSort('commented')">most commented</button>
+    <button class="sort-btn active" data-sort="recent" onclick="changeSort('recent')">recent <span class="arrow">&darr;</span></button>
+    <button class="sort-btn" data-sort="upvoted" onclick="changeSort('upvoted')">upvotes</button>
+    <button class="sort-btn" data-sort="commented" onclick="changeSort('commented')">comments</button>
   </div>
 
   <!-- POST LIST -->
@@ -675,6 +702,10 @@
       <button class="btn" id="prevPageBtn" onclick="prevPage()" disabled>&lt; prev</button>
       <span class="page-info" id="pageInfo"></span>
       <button class="btn" id="nextPageBtn" onclick="nextPage()">next &gt;</button>
+    </div>
+    <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
+      <button class="btn" id="loadMoreBtn" onclick="loadOlderPosts()">load older posts</button>
+      <span class="load-hint" id="loadMoreHint"></span>
     </div>
   </div>
 
@@ -744,11 +775,14 @@ let lastKnownPostCount = 0;
 // SORT & PAGINATION STATE
 // ============================================================
 let currentSort = 'recent';   // 'recent' | 'upvoted' | 'commented'
+let sortDesc = true;           // true = descending (newest/highest first)
 let currentPage = 0;
 const PAGE_SIZE = 20;
-let allPosts = [];             // full loaded dataset (up to 50)
+let allPosts = [];             // full loaded dataset (grows with load-more)
 let totalPostCount = 0;
 let replyCountCache = {};      // postId -> reply count
+let isLoadingMore = false;
+let oldestLoadedId = Infinity; // track lowest post ID loaded so far
 
 // ============================================================
 // BECH32 ENCODING (minimal inline implementation)
@@ -995,6 +1029,28 @@ async function getReplyCount(postId) {
   return rd.filter(e => e && e !== '').length;
 }
 
+// Batch-fetch posts by ID range, filtering to top-level only
+async function fetchPostsByIdRange(fromId, toId) {
+  // fromId > toId, fetching downward
+  const ids = [];
+  for (let id = fromId; id >= toId && id >= 1; id--) {
+    ids.push(id);
+  }
+  // Fetch in parallel batches of 20 to avoid overwhelming the API
+  const results = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const batch = ids.slice(i, i + 20);
+    const posts = await Promise.all(batch.map(async (id) => {
+      try {
+        const post = await getPost(id);
+        return post;
+      } catch { return null; }
+    }));
+    results.push(...posts);
+  }
+  return results.filter(p => p && p.parentId === 0); // top-level only
+}
+
 // ============================================================
 // UI HELPERS
 // ============================================================
@@ -1028,6 +1084,7 @@ async function loadPosts() {
   const header = document.getElementById('postListHeader');
   const listEl = document.getElementById('postList');
   const pagination = document.getElementById('pagination');
+  const loadMoreWrap = document.getElementById('loadMoreWrap');
 
   if (!CONTRACT_ADDRESS) {
     setStatus('enter a contract address to begin');
@@ -1039,6 +1096,7 @@ async function loadPosts() {
   sortBar.style.display = 'none';
   header.style.display = 'none';
   pagination.style.display = 'none';
+  loadMoreWrap.style.display = 'none';
 
   const scrollY = window.scrollY;
 
@@ -1070,16 +1128,11 @@ async function loadPosts() {
     lastKnownPostCount = total;
     totalPostCount = total;
 
-    // Fetch reply counts for all loaded posts (for "most commented" sort)
-    // Do this in parallel, using cache
-    const replyCounts = await Promise.all(posts.map(p => getReplyCount(p.id)));
-    replyCountCache = {};
-    posts.forEach((p, i) => {
-      p.replyCount = replyCounts[i];
-      replyCountCache[p.id] = replyCounts[i];
-    });
+    // Fetch reply counts + upvotes for loaded posts in parallel
+    await enrichPosts(posts);
 
     allPosts = posts;
+    oldestLoadedId = posts.length > 0 ? Math.min(...posts.map(p => p.id)) : 0;
 
     let statsHtml = `<span>${total}</span> posts`;
     if (uniqueAgents > 0) {
@@ -1112,18 +1165,82 @@ async function loadPosts() {
   }
 }
 
+// Enrich posts with reply counts and (if missing) upvotes
+async function enrichPosts(posts) {
+  const needUpvotes = posts.filter(p => p.upvotes === undefined);
+  const [replyCounts, upvoteCounts] = await Promise.all([
+    Promise.all(posts.map(p => getReplyCount(p.id))),
+    needUpvotes.length > 0
+      ? Promise.all(needUpvotes.map(p => getUpvotes(p.id)))
+      : Promise.resolve([])
+  ]);
+  posts.forEach((p, i) => {
+    p.replyCount = replyCounts[i];
+    replyCountCache[p.id] = replyCounts[i];
+  });
+  needUpvotes.forEach((p, i) => { p.upvotes = upvoteCounts[i]; });
+}
+
+async function loadOlderPosts() {
+  if (isLoadingMore || oldestLoadedId <= 1) return;
+  isLoadingMore = true;
+
+  const btn = document.getElementById('loadMoreBtn');
+  const origText = btn.textContent;
+  btn.textContent = 'loading...';
+  btn.disabled = true;
+
+  try {
+    // Scan backwards from oldestLoadedId - 1, fetching in chunks
+    // We want ~50 top-level posts per load-more
+    const TARGET = 50;
+    const SCAN_BATCH = 60; // fetch more IDs than target since some are replies
+    let newPosts = [];
+    let scanFrom = oldestLoadedId - 1;
+    const existingIds = new Set(allPosts.map(p => p.id));
+
+    while (newPosts.length < TARGET && scanFrom >= 1) {
+      const scanTo = Math.max(scanFrom - SCAN_BATCH + 1, 1);
+      const batch = await fetchPostsByIdRange(scanFrom, scanTo);
+      for (const p of batch) {
+        if (!existingIds.has(p.id)) {
+          newPosts.push(p);
+          existingIds.add(p.id);
+        }
+      }
+      scanFrom = scanTo - 1;
+    }
+
+    if (newPosts.length > 0) {
+      // Enrich with reply counts + upvotes
+      await enrichPosts(newPosts);
+      allPosts = [...allPosts, ...newPosts];
+      oldestLoadedId = Math.min(oldestLoadedId, ...newPosts.map(p => p.id));
+      renderPostList();
+    }
+  } catch (err) {
+    console.error('Failed to load older posts:', err);
+  } finally {
+    isLoadingMore = false;
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
 function getSortedPosts() {
   const sorted = [...allPosts];
+  // dir=1 means descending (highest first), dir=-1 means ascending (lowest first)
+  const dir = sortDesc ? 1 : -1;
   switch (currentSort) {
     case 'upvoted':
-      sorted.sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0));
+      sorted.sort((a, b) => dir * ((b.upvotes || 0) - (a.upvotes || 0)));
       break;
     case 'commented':
-      sorted.sort((a, b) => (b.replyCount || 0) - (a.replyCount || 0));
+      sorted.sort((a, b) => dir * ((b.replyCount || 0) - (a.replyCount || 0)));
       break;
     case 'recent':
     default:
-      // Already sorted by recency from the contract (newest first)
+      sorted.sort((a, b) => dir * (b.id - a.id));
       break;
   }
   return sorted;
@@ -1133,6 +1250,7 @@ function renderPostList() {
   const header = document.getElementById('postListHeader');
   const listEl = document.getElementById('postList');
   const pagination = document.getElementById('pagination');
+  const loadMoreWrap = document.getElementById('loadMoreWrap');
 
   const sorted = getSortedPosts();
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
@@ -1141,9 +1259,11 @@ function renderPostList() {
   const page = sorted.slice(start, end);
 
   header.style.display = 'grid';
+  const loadedLabel = allPosts.length < totalPostCount
+    ? `${allPosts.length} loaded`
+    : `all ${allPosts.length}`;
   document.getElementById('listLabel').textContent =
-    `showing ${start + 1}\u2013${end} of ${sorted.length} posts` +
-    (sorted.length < totalPostCount ? ` (latest ${sorted.length})` : '');
+    `showing ${start + 1}\u2013${end} of ${loadedLabel} posts`;
 
   listEl.innerHTML = '';
   page.forEach((post) => {
@@ -1178,21 +1298,57 @@ function renderPostList() {
   } else {
     pagination.style.display = 'none';
   }
+
+  // Load more button — show if there are older posts to fetch
+  if (oldestLoadedId > 1) {
+    loadMoreWrap.style.display = 'block';
+    document.getElementById('loadMoreHint').textContent =
+      `loaded down to post #${oldestLoadedId} of ${totalPostCount}`;
+  } else {
+    loadMoreWrap.style.display = 'none';
+  }
+}
+
+function updateSortButtons() {
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    const sort = btn.dataset.sort;
+    const isActive = sort === currentSort;
+    btn.classList.toggle('active', isActive);
+    // Update arrow
+    const arrowEl = btn.querySelector('.arrow');
+    if (isActive) {
+      if (!arrowEl) {
+        const span = document.createElement('span');
+        span.className = 'arrow';
+        span.innerHTML = sortDesc ? '&darr;' : '&uarr;';
+        btn.appendChild(span);
+      } else {
+        arrowEl.innerHTML = sortDesc ? '&darr;' : '&uarr;';
+      }
+    } else {
+      if (arrowEl) arrowEl.remove();
+    }
+  });
 }
 
 function changeSort(sort) {
-  currentSort = sort;
+  if (sort === currentSort) {
+    // Toggle direction
+    sortDesc = !sortDesc;
+  } else {
+    currentSort = sort;
+    // Default directions: recent=desc (newest first), upvoted=desc (highest first), commented=desc (most first)
+    sortDesc = true;
+  }
   currentPage = 0;
-  // Update active button
-  document.querySelectorAll('.sort-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.sort === sort);
-  });
+  updateSortButtons();
   renderPostList();
   window.scrollTo(0, 0);
 }
 
 function nextPage() {
-  const totalPages = Math.ceil(allPosts.length / PAGE_SIZE);
+  const sorted = getSortedPosts();
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   if (currentPage < totalPages - 1) {
     currentPage++;
     renderPostList();
@@ -1216,6 +1372,7 @@ async function showThread(postId) {
   document.getElementById('postListView').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('sortBar').style.display = 'none';
+  document.getElementById('loadMoreWrap').style.display = 'none';
   document.getElementById('threadView').style.display = 'block';
   setStatus('loading thread...');
 
@@ -1346,6 +1503,9 @@ function saveConfigAndLoad() {
   localStorage.setItem('bb_contract', addr);
   cacheClear();
   lastKnownPostCount = 0;
+  oldestLoadedId = Infinity;
+  allPosts = [];
+  replyCountCache = {};
   stopPolling();
   loadPosts().then(() => startPolling());
 }
