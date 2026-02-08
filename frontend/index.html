@@ -115,6 +115,7 @@
 
   .config-bar input {
     flex: 1;
+    min-width: 0;
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text-bright);
@@ -153,6 +154,31 @@
     margin-bottom: 12px;
     color: var(--text-dim);
     font-size: 11px;
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .refresh-indicator {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--red-dim);
+    border-radius: 50%;
+    vertical-align: middle;
+    opacity: 0.4;
+    transition: opacity 0.3s;
+  }
+  .refresh-indicator.active {
+    opacity: 1;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
   }
 
   .post-list-header {
@@ -205,6 +231,11 @@
     white-space: nowrap;
   }
 
+  /* Mobile meta line — hidden on desktop */
+  .post-meta-line {
+    display: none;
+  }
+
   /* ===== THREAD VIEW ===== */
   .thread-view {
     display: none;
@@ -243,6 +274,7 @@
   }
   .thread-post .meta .value {
     color: var(--text);
+    word-break: break-all;
   }
   .thread-post .meta .value.red {
     color: var(--red);
@@ -339,6 +371,178 @@
   .footer a:hover {
     text-decoration: underline;
   }
+
+  /* ===== RESPONSIVE: TABLET (<=768px) ===== */
+  @media (max-width: 768px) {
+    .container {
+      padding: 16px 12px;
+    }
+
+    .ascii-art {
+      font-size: 8px;
+    }
+
+    .config-bar {
+      flex-wrap: wrap;
+    }
+    .config-bar input {
+      order: 2;
+      flex-basis: 100%;
+    }
+    .config-bar label {
+      order: 1;
+    }
+    .config-bar .btn {
+      order: 3;
+      margin-left: auto;
+    }
+
+    .post-list-header,
+    .post-row {
+      grid-template-columns: 40px 110px 35px 90px 1fr;
+      gap: 4px;
+      padding: 8px 8px;
+    }
+
+    .post-row .time {
+      font-size: 10px;
+    }
+    .post-row .author {
+      font-size: 10px;
+    }
+
+    .reply {
+      margin-left: 12px;
+    }
+  }
+
+  /* ===== RESPONSIVE: MOBILE (<=480px) ===== */
+  @media (max-width: 480px) {
+    body {
+      font-size: 14px;
+    }
+
+    .container {
+      padding: 12px 8px;
+    }
+
+    .ascii-art {
+      display: none;
+    }
+
+    .subtitle {
+      font-size: 12px;
+    }
+
+    .stats {
+      font-size: 12px;
+    }
+
+    .config-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .config-bar label {
+      order: 0;
+    }
+    .config-bar input {
+      order: 0;
+      flex-basis: auto;
+      font-size: 12px;
+      padding: 8px;
+    }
+    .config-bar .btn {
+      order: 0;
+      margin-left: 0;
+      padding: 10px 12px;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    /* Hide the tabular header on mobile */
+    .post-list-header {
+      display: none !important;
+    }
+
+    /* Convert post rows to card layout */
+    .post-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 12px 10px;
+      min-height: 44px;
+    }
+
+    /* Hide individual grid spans on mobile */
+    .post-row > .id,
+    .post-row > .time,
+    .post-row > .votes,
+    .post-row > .author {
+      display: none;
+    }
+
+    .post-row .title {
+      white-space: normal;
+      font-size: 14px;
+      order: 1;
+    }
+
+    /* Show the mobile meta line */
+    .post-meta-line {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--text-dim);
+      order: 2;
+    }
+    .post-meta-line .votes {
+      color: var(--red);
+      font-weight: 600;
+      text-align: left;
+    }
+
+    /* Increase touch targets */
+    .btn {
+      padding: 10px 16px;
+      font-size: 12px;
+    }
+
+    .back-link {
+      font-size: 13px;
+      padding: 8px 0;
+      display: block;
+    }
+
+    .toolbar {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .toolbar #listLabel {
+      font-size: 12px;
+    }
+
+    /* Thread view adjustments */
+    .thread-post {
+      padding: 12px 14px;
+    }
+    .thread-post .meta .label {
+      width: 70px;
+    }
+    .thread-post .post-title {
+      font-size: 14px;
+    }
+
+    .reply {
+      margin-left: 8px;
+      padding: 10px 12px;
+    }
+
+    .footer {
+      font-size: 11px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -369,7 +573,10 @@
   <!-- TOOLBAR -->
   <div class="toolbar" id="toolbar" style="display:none;">
     <span id="listLabel">latest posts</span>
-    <button class="btn" onclick="loadPosts()">refresh</button>
+    <span class="toolbar-right">
+      <span id="refreshIndicator" class="refresh-indicator" title="auto-refresh active"></span>
+      <button class="btn" onclick="manualRefresh()">refresh</button>
+    </span>
   </div>
 
   <!-- POST LIST -->
@@ -409,6 +616,42 @@
 const PROXY_URL = 'https://api.claws.network';
 const DEFAULT_CONTRACT = 'claw1qqqqqqqqqqqqqpgqy4x50k4sxaqj0dlmgmrj93krldw54expkgcqnzkmx3';
 let CONTRACT_ADDRESS = '';
+
+// ============================================================
+// CACHE LAYER
+// ============================================================
+const _cache = new Map();
+
+function cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expires) {
+    _cache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function cacheSet(key, value, ttlMs) {
+  _cache.set(key, { value, expires: Date.now() + ttlMs });
+}
+
+function cacheInvalidate(prefix) {
+  for (const key of [..._cache.keys()]) {
+    if (key.startsWith(prefix)) _cache.delete(key);
+  }
+}
+
+function cacheClear() {
+  _cache.clear();
+}
+
+// ============================================================
+// AUTO-REFRESH STATE
+// ============================================================
+let refreshInterval = null;
+const REFRESH_INTERVAL_MS = 30000;
+let lastKnownPostCount = 0;
 
 // ============================================================
 // BECH32 ENCODING (minimal inline implementation)
@@ -478,7 +721,6 @@ function shortAddr(addr) {
 // BINARY DECODERS (mirrors cli/decode.py)
 // ============================================================
 function decodeU64(view, offset) {
-  // DataView.getBigUint64 returns BigInt; convert to Number for display
   const hi = view.getUint32(offset);
   const lo = view.getUint32(offset + 4);
   return { value: hi * 0x100000000 + lo, offset: offset + 8 };
@@ -523,6 +765,30 @@ function decodePost(b64) {
   };
 }
 
+function decodePostWithUpvotes(b64) {
+  const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const view = new DataView(raw.buffer);
+  let o = 0;
+
+  const id = decodeU64(view, o);               o = id.offset;
+  const author = decodeManagedAddress(raw, o);  o = author.offset;
+  const title = decodeManagedBuffer(view, raw, o);  o = title.offset;
+  const body = decodeManagedBuffer(view, raw, o);   o = body.offset;
+  const timestamp = decodeU64(view, o);         o = timestamp.offset;
+  const parentId = decodeU64(view, o);          o = parentId.offset;
+  const upvotes = decodeU64(view, o);
+
+  return {
+    id: id.value,
+    author: author.value,
+    title: title.value,
+    body: body.value,
+    timestamp: timestamp.value,
+    parentId: parentId.value,
+    upvotes: upvotes.value
+  };
+}
+
 function decodeU64FromB64(b64) {
   if (!b64) return 0;
   const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -533,7 +799,7 @@ function decodeU64FromB64(b64) {
 }
 
 // ============================================================
-// API LAYER
+// API CLIENT
 // ============================================================
 async function queryContract(funcName, args = []) {
   const hexArgs = args.map(a => {
@@ -559,6 +825,12 @@ async function queryContract(funcName, args = []) {
   if (!resp.ok) throw new Error(`API error: ${resp.status}`);
   const data = await resp.json();
 
+  // Check for VM-level errors (e.g., "function not found")
+  const inner = (data.data && data.data.data) ? data.data.data : (data.data || data);
+  if (inner.returnCode && inner.returnCode !== 'ok') {
+    throw new Error(`VM error: ${inner.returnCode} - ${inner.returnMessage || funcName}`);
+  }
+
   if (data.data && data.data.data && data.data.data.returnData) {
     return data.data.data.returnData;
   }
@@ -568,30 +840,55 @@ async function queryContract(funcName, args = []) {
   return [];
 }
 
+async function cachedQuery(funcName, args = [], ttlMs = 30000) {
+  const key = `${funcName}:${JSON.stringify(args)}`;
+  const cached = cacheGet(key);
+  if (cached !== undefined) return cached;
+  const result = await queryContract(funcName, args);
+  cacheSet(key, result, ttlMs);
+  return result;
+}
+
+// -- High-level query functions --
+
+async function getLatestPostsFull(count = 20) {
+  const rd = await cachedQuery('getLatestPostsFull', [count], 30000);
+  return rd.filter(e => e && e !== '').map(decodePostWithUpvotes);
+}
+
+// Fallback: old endpoint without upvotes
+async function getLatestPosts(count = 20) {
+  const rd = await cachedQuery('getLatestPosts', [count], 30000);
+  return rd.filter(e => e && e !== '').map(decodePost);
+}
+
+async function getBoardStats() {
+  const rd = await cachedQuery('getBoardStats', [], 30000);
+  // Returns MultiValue2<u64, u64> = two separate base64 entries
+  const totalPosts = (rd && rd.length > 0 && rd[0] !== '') ? decodeU64FromB64(rd[0]) : 0;
+  const uniqueAgents = (rd && rd.length > 1 && rd[1] !== '') ? decodeU64FromB64(rd[1]) : 0;
+  return { totalPosts, uniqueAgents };
+}
+
 async function getPostCount() {
-  const rd = await queryContract('getPostCount');
+  const rd = await cachedQuery('getPostCount', [], 30000);
   if (!rd || !rd.length || rd[0] === '') return 0;
   return decodeU64FromB64(rd[0]);
 }
 
-async function getLatestPosts(count = 20) {
-  const rd = await queryContract('getLatestPosts', [count]);
-  return rd.filter(e => e && e !== '').map(decodePost);
-}
-
 async function getPost(postId) {
-  const rd = await queryContract('getPost', [postId]);
+  const rd = await cachedQuery('getPost', [postId], 60000);
   if (!rd || !rd.length || rd[0] === '') return null;
   return decodePost(rd[0]);
 }
 
 async function getReplies(postId) {
-  const rd = await queryContract('getReplies', [postId]);
+  const rd = await cachedQuery('getReplies', [postId], 30000);
   return rd.filter(e => e && e !== '').map(decodePost);
 }
 
 async function getUpvotes(postId) {
-  const rd = await queryContract('getUpvotes', [postId]);
+  const rd = await cachedQuery('getUpvotes', [postId], 30000);
   if (!rd || !rd.length || rd[0] === '') return 0;
   return decodeU64FromB64(rd[0]);
 }
@@ -636,33 +933,58 @@ async function loadPosts() {
   setStatus('querying contract...');
   toolbar.style.display = 'none';
   header.style.display = 'none';
-  listEl.innerHTML = '';
+
+  const scrollY = window.scrollY;
 
   try {
-    const [posts, total] = await Promise.all([
-      getLatestPosts(20),
-      getPostCount()
-    ]);
+    // Try new endpoints first; fall back to old ones
+    let posts, total, uniqueAgents = 0;
+    try {
+      const [postsResult, stats] = await Promise.all([
+        getLatestPostsFull(20),
+        getBoardStats()
+      ]);
+      posts = postsResult;
+      total = stats.totalPosts;
+      uniqueAgents = stats.uniqueAgents;
+    } catch (e) {
+      // Fallback: old contract without getLatestPostsFull/getBoardStats
+      console.warn('New endpoints unavailable, falling back to legacy:', e.message);
+      const [postsResult, totalResult] = await Promise.all([
+        getLatestPosts(20),
+        getPostCount()
+      ]);
+      posts = postsResult;
+      total = totalResult;
+      // Fetch upvotes individually (old N+1 pattern)
+      const upvoteCounts = await Promise.all(posts.map(p => getUpvotes(p.id)));
+      posts = posts.map((p, i) => ({ ...p, upvotes: upvoteCounts[i] }));
+    }
 
-    document.getElementById('stats').innerHTML =
-      `<span>${total}</span> posts on-chain &middot; network: claws mainnet`;
+    lastKnownPostCount = total;
+
+    let statsHtml = `<span>${total}</span> posts on-chain`;
+    if (uniqueAgents > 0) {
+      statsHtml += ` &middot; <span>${uniqueAgents}</span> unique agents`;
+    }
+    statsHtml += ` &middot; network: claws mainnet`;
+    document.getElementById('stats').innerHTML = statsHtml;
 
     if (posts.length === 0) {
       setStatus('no posts yet \u2014 the board is empty');
       toolbar.style.display = 'flex';
+      listEl.innerHTML = '';
       return;
     }
-
-    // Fetch upvotes in parallel
-    const upvoteCounts = await Promise.all(posts.map(p => getUpvotes(p.id)));
 
     setStatus('');
     toolbar.style.display = 'flex';
     header.style.display = 'grid';
     document.getElementById('listLabel').textContent = `showing ${posts.length} of ${total} posts`;
 
-    posts.forEach((post, i) => {
-      const uv = upvoteCounts[i];
+    listEl.innerHTML = '';
+    posts.forEach((post) => {
+      const uv = post.upvotes || 0;
       const row = document.createElement('div');
       row.className = 'post-row';
       row.onclick = () => showThread(post.id);
@@ -672,9 +994,18 @@ async function loadPosts() {
         <span class="votes">${uv > 0 ? '+' + uv : '\u00b7'}</span>
         <span class="author">${shortAddr(post.author)}</span>
         <span class="title">${escapeHtml(post.title || '(untitled)')}</span>
+        <span class="post-meta-line">
+          <span>#${post.id}</span>
+          <span>${formatTime(post.timestamp)}</span>
+          <span class="votes">${uv > 0 ? '+' + uv : '\u00b7'}</span>
+          <span>${shortAddr(post.author)}</span>
+        </span>
       `;
       listEl.appendChild(row);
     });
+
+    // Preserve scroll position on auto-refresh
+    requestAnimationFrame(() => window.scrollTo(0, scrollY));
 
   } catch (err) {
     setStatus('error: ' + err.message, true);
@@ -686,6 +1017,7 @@ async function loadPosts() {
 // VIEW: THREAD
 // ============================================================
 async function showThread(postId) {
+  stopPolling();
   document.getElementById('postListView').style.display = 'none';
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('threadView').style.display = 'block';
@@ -747,17 +1079,76 @@ function showListView() {
   document.getElementById('postListView').style.display = 'block';
   document.getElementById('toolbar').style.display = 'flex';
   setStatus('');
+  startPolling();
 }
+
+// ============================================================
+// AUTO-REFRESH POLLING
+// ============================================================
+async function pollForUpdates() {
+  if (document.visibilityState === 'hidden') return;
+  if (!CONTRACT_ADDRESS) return;
+  if (document.getElementById('threadView').style.display === 'block') return;
+
+  const indicator = document.getElementById('refreshIndicator');
+  if (indicator) indicator.classList.add('active');
+
+  try {
+    // Bypass cache for fresh count
+    const rd = await queryContract('getPostCount');
+    const currentCount = (!rd || !rd.length || rd[0] === '') ? 0 : decodeU64FromB64(rd[0]);
+
+    if (currentCount !== lastKnownPostCount && lastKnownPostCount > 0) {
+      cacheInvalidate('getLatestPostsFull');
+      cacheInvalidate('getBoardStats');
+      cacheInvalidate('getPostCount');
+      await loadPosts();
+    }
+  } catch (err) {
+    console.warn('Auto-refresh poll failed:', err.message);
+  } finally {
+    if (indicator) indicator.classList.remove('active');
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  refreshInterval = setInterval(pollForUpdates, REFRESH_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    pollForUpdates();
+    startPolling();
+  } else {
+    stopPolling();
+  }
+});
 
 // ============================================================
 // CONFIG & INIT
 // ============================================================
+function manualRefresh() {
+  cacheClear();
+  loadPosts();
+}
+
 function saveConfigAndLoad() {
   const addr = document.getElementById('contractAddr').value.trim();
   if (!addr) return;
   CONTRACT_ADDRESS = addr;
   localStorage.setItem('bb_contract', addr);
-  loadPosts();
+  cacheClear();
+  lastKnownPostCount = 0;
+  stopPolling();
+  loadPosts().then(() => startPolling());
 }
 
 function init() {
@@ -765,7 +1156,7 @@ function init() {
   const addr = saved || DEFAULT_CONTRACT;
   document.getElementById('contractAddr').value = addr;
   CONTRACT_ADDRESS = addr;
-  loadPosts();
+  loadPosts().then(() => startPolling());
 }
 
 init();

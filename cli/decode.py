@@ -151,10 +151,51 @@ def decode_post(data):
     }
 
 
+def decode_post_with_upvotes(data):
+    """
+    Decode a PostWithUpvotes struct from its binary (nested-encoded) representation.
+
+    Layout:
+      id:        u64        (8 bytes, big-endian)
+      author:    Address    (32 bytes)
+      title:     Buffer     (4-byte u32 length + N bytes)
+      body:      Buffer     (4-byte u32 length + N bytes)
+      timestamp: u64        (8 bytes, big-endian)
+      parent_id: u64        (8 bytes, big-endian)
+      upvotes:   u64        (8 bytes, big-endian)
+
+    Returns a dict with decoded fields.
+    """
+    offset = 0
+    post_id, offset = decode_u64(data, offset)
+    author, offset = decode_managed_address(data, offset)
+    title, offset = decode_managed_buffer(data, offset)
+    body, offset = decode_managed_buffer(data, offset)
+    timestamp, offset = decode_u64(data, offset)
+    parent_id, offset = decode_u64(data, offset)
+    upvotes, offset = decode_u64(data, offset)
+
+    return {
+        "id": post_id,
+        "author": author,
+        "title": title,
+        "body": body,
+        "timestamp": timestamp,
+        "parent_id": parent_id,
+        "upvotes": upvotes,
+    }
+
+
 def decode_post_from_base64(b64_str):
     """Decode a Post from a base64-encoded return data entry."""
     raw = base64.b64decode(b64_str)
     return decode_post(raw)
+
+
+def decode_post_with_upvotes_from_base64(b64_str):
+    """Decode a PostWithUpvotes from a base64-encoded return data entry."""
+    raw = base64.b64decode(b64_str)
+    return decode_post_with_upvotes(raw)
 
 
 def decode_u64_from_base64(b64_str):

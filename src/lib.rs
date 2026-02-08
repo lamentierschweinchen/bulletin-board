@@ -4,7 +4,7 @@
 mod post;
 
 use multiversx_sc::imports::*;
-use post::Post;
+use post::{Post, PostWithUpvotes};
 
 const MAX_LATEST_POSTS: u64 = 50;
 
@@ -41,6 +41,7 @@ pub trait BulletinBoard {
         self.posts(post_id).set(&post);
         self.top_level_posts().push(&post_id);
         self.post_count().set(post_id);
+        self.unique_authors().insert(caller.clone());
 
         self.post_created_event(post_id, &caller, timestamp, 0u64);
 
@@ -71,6 +72,7 @@ pub trait BulletinBoard {
         self.posts(post_id).set(&post);
         self.replies(parent_id).push(&post_id);
         self.post_count().set(post_id);
+        self.unique_authors().insert(caller.clone());
 
         self.post_created_event(post_id, &caller, timestamp, parent_id);
 
@@ -130,6 +132,45 @@ pub trait BulletinBoard {
         }
 
         result
+    }
+
+    #[view(getLatestPostsFull)]
+    fn get_latest_posts_full(&self, count: u64) -> MultiValueEncoded<PostWithUpvotes<Self::Api>> {
+        let capped_count = core::cmp::min(count, MAX_LATEST_POSTS);
+        let mut result = MultiValueEncoded::new();
+        let total = self.top_level_posts().len() as u64;
+
+        if total == 0 {
+            return result;
+        }
+
+        let start = if total > capped_count {
+            total - capped_count
+        } else {
+            0u64
+        };
+
+        // VecMapper is 1-based: indexes 1..=len
+        let start_index = start + 1;
+        let end_index = total;
+
+        for i in (start_index..=end_index).rev() {
+            let post_id = self.top_level_posts().get(i as usize);
+            let post = self.posts(post_id).get();
+            let upvotes = self.upvote_count(post_id).get();
+            result.push(PostWithUpvotes { post, upvotes });
+        }
+
+        result
+    }
+
+    #[view(getBoardStats)]
+    fn get_board_stats(&self) -> MultiValue2<u64, u64> {
+        (
+            self.post_count().get(),
+            self.unique_authors().len() as u64,
+        )
+            .into()
     }
 
     #[view(getReplies)]
@@ -194,4 +235,7 @@ pub trait BulletinBoard {
 
     #[storage_mapper("upvoteVoters")]
     fn upvote_voters(&self, post_id: u64) -> UnorderedSetMapper<ManagedAddress>;
+
+    #[storage_mapper("uniqueAuthors")]
+    fn unique_authors(&self) -> UnorderedSetMapper<ManagedAddress>;
 }

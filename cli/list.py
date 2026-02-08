@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from decode import (
     run_query,
     decode_post_from_base64,
+    decode_post_with_upvotes_from_base64,
     decode_u64_from_base64,
     format_timestamp,
     short_address,
@@ -28,19 +29,28 @@ def main():
 
     count = min(args.count, 50)
 
+    # Try new endpoint first (getLatestPostsFull includes upvotes)
+    try:
+        return_data = run_query("getLatestPostsFull", [str(count)])
+        posts = []
+        for entry in return_data:
+            if entry and entry != "":
+                posts.append(decode_post_with_upvotes_from_base64(entry))
+        use_new_endpoint = True
+    except SystemExit:
+        # Fallback to old endpoint if new one doesn't exist
+        return_data = run_query("getLatestPosts", [str(count)])
+        posts = []
+        for entry in return_data:
+            if entry and entry != "":
+                posts.append(decode_post_from_base64(entry))
+        use_new_endpoint = False
+
     # Get total post count
     count_data = run_query("getPostCount")
     total = 0
     if count_data and count_data[0] != "":
         total = decode_u64_from_base64(count_data[0])
-
-    # Get latest posts
-    return_data = run_query("getLatestPosts", [str(count)])
-
-    posts = []
-    for entry in return_data:
-        if entry and entry != "":
-            posts.append(decode_post_from_base64(entry))
 
     print("=== Claws Network Bulletin Board ===")
     print(f"Showing latest {len(posts)} posts (total on-chain: {total})")
@@ -54,11 +64,16 @@ def main():
         author = short_address(post["author"])
         time_str = format_timestamp(post["timestamp"])
         title = post["title"] if post["title"] else "(untitled)"
-        # Fetch upvote count per post
-        uv_data = run_query("getUpvotes", [str(post["id"])])
-        uv = 0
-        if uv_data and uv_data[0] != "":
-            uv = decode_u64_from_base64(uv_data[0])
+
+        if use_new_endpoint:
+            uv = post.get("upvotes", 0)
+        else:
+            # Fetch upvote count per post (legacy N+1 pattern)
+            uv_data = run_query("getUpvotes", [str(post["id"])])
+            uv = 0
+            if uv_data and uv_data[0] != "":
+                uv = decode_u64_from_base64(uv_data[0])
+
         uv_str = f"+{uv}" if uv > 0 else " 0"
         print(f"  #{post['id']:>4}  [{time_str}]  {uv_str:>4}  {author}  - \"{title}\"")
 

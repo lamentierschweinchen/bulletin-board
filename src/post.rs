@@ -13,3 +13,10 @@ pub struct Post<M: ManagedTypeApi> {
     pub timestamp: u64,
     pub parent_id: u64,
 }
+
+#[type_abi]
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, Clone)]
+pub struct PostWithUpvotes<M: ManagedTypeApi> {
+    pub post: Post<M>,
+    pub upvotes: u64,
+}
