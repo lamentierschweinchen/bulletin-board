@@ -16,6 +16,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Vercel
+.vercel/
+
 # OS
 .DS_Store
 Thumbs.db

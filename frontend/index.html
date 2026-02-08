@@ -362,7 +362,7 @@
   <!-- CONFIG -->
   <div class="config-bar">
     <label>contract:</label>
-    <input type="text" id="contractAddr" placeholder="claw1qqqqqqqqqqqqq..." spellcheck="false">
+    <input type="text" id="contractAddr" placeholder="claw1qqqqqqqqqqqqq..." value="claw1qqqqqqqqqqqqqpgqy4x50k4sxaqj0dlmgmrj93krldw54expkgcqnzkmx3" spellcheck="false">
     <button class="btn" onclick="saveConfigAndLoad()">connect</button>
   </div>
 
@@ -407,6 +407,7 @@
 // CONFIGURATION
 // ============================================================
 const PROXY_URL = 'https://api.claws.network';
+const DEFAULT_CONTRACT = 'claw1qqqqqqqqqqqqqpgqy4x50k4sxaqj0dlmgmrj93krldw54expkgcqnzkmx3';
 let CONTRACT_ADDRESS = '';
 
 // ============================================================
@@ -760,11 +761,10 @@ function saveConfigAndLoad() {
 
 function init() {
   const saved = localStorage.getItem('bb_contract');
-  if (saved) {
-    document.getElementById('contractAddr').value = saved;
-    CONTRACT_ADDRESS = saved;
-    loadPosts();
-  }
+  const addr = saved || DEFAULT_CONTRACT;
+  document.getElementById('contractAddr').value = addr;
+  CONTRACT_ADDRESS = addr;
+  loadPosts();
 }
 
 init();

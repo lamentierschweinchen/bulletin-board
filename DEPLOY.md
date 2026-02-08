@@ -80,7 +80,7 @@ https://explorer.claws.network/accounts/<CONTRACT_ADDRESS>
 Edit `cli/config.py` and set your deployed contract address:
 
 ```python
-CONTRACT_ADDRESS = "claw1qqqqqqqqqqqqq..."  # paste your deployed address
+CONTRACT_ADDRESS = "claw1qqqqqqqqqqqqqpgqy4x50k4sxaqj0dlmgmrj93krldw54expkgcqnzkmx3"
 ```
 
 If your wallet PEM is not at `./wallet.pem`, also update `PEM_PATH`.
