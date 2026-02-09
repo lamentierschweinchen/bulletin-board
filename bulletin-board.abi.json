@@ -1,0 +1,282 @@
+{
+    "buildInfo": {
+        "framework": {
+            "name": "multiversx-sc",
+            "version": "0.54.1"
+        }
+    },
+    "name": "BulletinBoard",
+    "constructor": {
+        "inputs": [],
+        "outputs": []
+    },
+    "upgradeConstructor": {
+        "inputs": [],
+        "outputs": []
+    },
+    "endpoints": [
+        {
+            "name": "createPost",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "title",
+                    "type": "bytes"
+                },
+                {
+                    "name": "body",
+                    "type": "bytes"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "replyToPost",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "parent_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "body",
+                    "type": "bytes"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "upvotePost",
+            "mutability": "mutable",
+            "inputs": [
+                {
+                    "name": "post_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": []
+        },
+        {
+            "name": "getPost",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "post_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "Post"
+                }
+            ]
+        },
+        {
+            "name": "getLatestPosts",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "count",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "variadic<Post>",
+                    "multi_result": true
+                }
+            ]
+        },
+        {
+            "name": "getLatestPostsFull",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "count",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "variadic<PostWithUpvotes>",
+                    "multi_result": true
+                }
+            ]
+        },
+        {
+            "name": "getBoardStats",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "u64"
+                },
+                {
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "getReplies",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "post_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "variadic<Post>",
+                    "multi_result": true
+                }
+            ]
+        },
+        {
+            "name": "getPostCount",
+            "mutability": "readonly",
+            "inputs": [],
+            "outputs": [
+                {
+                    "type": "u64"
+                }
+            ]
+        },
+        {
+            "name": "getUpvotes",
+            "mutability": "readonly",
+            "inputs": [
+                {
+                    "name": "post_id",
+                    "type": "u64"
+                }
+            ],
+            "outputs": [
+                {
+                    "type": "u64"
+                }
+            ]
+        }
+    ],
+    "events": [
+        {
+            "identifier": "postCreated",
+            "inputs": [
+                {
+                    "name": "post_id",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "author",
+                    "type": "Address",
+                    "indexed": true
+                },
+                {
+                    "name": "timestamp",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "parent_id",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        },
+        {
+            "identifier": "postUpvoted",
+            "inputs": [
+                {
+                    "name": "post_id",
+                    "type": "u64",
+                    "indexed": true
+                },
+                {
+                    "name": "voter",
+                    "type": "Address",
+                    "indexed": true
+                },
+                {
+                    "name": "timestamp",
+                    "type": "u64",
+                    "indexed": true
+                }
+            ]
+        }
+    ],
+    "esdtAttributes": [],
+    "hasCallback": false,
+    "types": {
+        "Post": {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "u64"
+                },
+                {
+                    "name": "author",
+                    "type": "Address"
+                },
+                {
+                    "name": "title",
+                    "type": "bytes"
+                },
+                {
+                    "name": "body",
+                    "type": "bytes"
+                },
+                {
+                    "name": "timestamp",
+                    "type": "u64"
+                },
+                {
+                    "name": "parent_id",
+                    "type": "u64"
+                }
+            ]
+        },
+        "PostWithUpvotes": {
+            "type": "struct",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": "u64"
+                },
+                {
+                    "name": "author",
+                    "type": "Address"
+                },
+                {
+                    "name": "title",
+                    "type": "bytes"
+                },
+                {
+                    "name": "body",
+                    "type": "bytes"
+                },
+                {
+                    "name": "timestamp",
+                    "type": "u64"
+                },
+                {
+                    "name": "parent_id",
+                    "type": "u64"
+                },
+                {
+                    "name": "upvotes",
+                    "type": "u64"
+                }
+            ]
+        }
+    }
+}

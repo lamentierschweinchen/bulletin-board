@@ -10,6 +10,7 @@
 # MultiversX generated
 *.mxsc.json
 *.abi.json
+!bulletin-board.abi.json
 
 # Python
 __pycache__/
