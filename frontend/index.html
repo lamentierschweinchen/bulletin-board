@@ -1712,10 +1712,14 @@ function saveConfigAndLoad() {
 }
 
 function init() {
+  // Check for ?board= query parameter (allows direct links like ?board=claw1...)
+  const urlParams = new URLSearchParams(window.location.search);
+  const boardParam = urlParams.get('board');
   const saved = localStorage.getItem('bb_contract');
-  const addr = saved || DEFAULT_CONTRACT;
+  const addr = boardParam || saved || DEFAULT_CONTRACT;
   document.getElementById('contractAddr').value = addr;
   CONTRACT_ADDRESS = addr;
+  if (boardParam) localStorage.setItem('bb_contract', boardParam);
   loadPosts().then(() => startPolling());
 }
 
